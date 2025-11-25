@@ -1,0 +1,117 @@
+# -*- coding: utf-8 -*-
+import os
+from datetime import datetime
+from openpyxl import load_workbook, Workbook
+
+EXCEL_FILE = "卖货登记.xlsx"
+SHEET_NAME = "Sheet1"
+
+def init_excel():
+    if not os.path.exists(EXCEL_FILE):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = SHEET_NAME
+        headers = [
+            "日期", "货名", "克重", "成本", "成本总价",
+            "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"
+        ]
+        ws.append(headers)
+        wb.save(EXCEL_FILE)
+
+def get_today():
+    return datetime.now().strftime("%Y年%m月%d日")
+
+def add_record():
+    print("\n【新增销售记录】")
+    try:
+        goods = input("请输入货名: ").strip()
+        weight = float(input("请输入克重: "))
+        cost = float(input("请输入成本: "))
+        source = input("请输入货源: ").strip()
+        sell_price = float(input("请输入卖价: "))
+    except ValueError:
+        print("❌ 输入错误！")
+        return
+
+    total_cost = weight * cost
+    profit_before = sell_price - cost
+
+    wb = load_workbook(EXCEL_FILE)
+    ws = wb[SHEET_NAME]
+    ws.append([
+        get_today(), goods, weight, cost, total_cost,
+        "抖音", source, sell_price, profit_before,
+        "", profit_before
+    ])
+    wb.save(EXCEL_FILE)
+    print("✅ 记录已添加！")
+
+def search_records(criteria):
+    wb = load_workbook(EXCEL_FILE)
+    ws = wb[SHEET_NAME]
+    matches = []
+    for row_idx in range(2, ws.max_row + 1):
+        data = [ws.cell(row=row_idx, column=col).value for col in range(1, 12)]
+        if (data[1] == criteria["货名"] and data[2] == criteria["克重"] and
+            data[3] == criteria["成本"] and data[6] == criteria["货源"] and
+            data[7] == criteria["卖价"]):
+            matches.append((row_idx, data))
+    return matches
+
+def process_refund():
+    print("\n【处理退款】")
+    try:
+        goods = input("货名: ").strip()
+        weight = float(input("克重: "))
+        cost = float(input("成本: "))
+        source = input("货源: ").strip()
+        sell_price = float(input("卖价: "))
+    except ValueError:
+        print("❌ 数字格式错误！")
+        return
+
+    criteria = {"货名": goods, "克重": weight, "成本": cost, "货源": source, "卖价": sell_price}
+    matches = search_records(criteria)
+
+    if not matches:
+        print("❌ 未找到记录")
+        return
+
+    if len(matches) == 1:
+        row_num = matches[0][0]
+        print(f"✅ 找到记录，行号: {row_num}")
+    else:
+        print(f"🔍 找到 {len(matches)} 条，请选择：")
+        for i, (r, d) in enumerate(matches): print(f"  {i+1}. 行{r} | {d[1]} | 卖价:{d[7]}")
+        try:
+            choice = int(input("选序号: ")) - 1
+            if 0 <= choice < len(matches): row_num = matches[choice][0]
+            else: print("❌ 无效"); return
+        except: print("❌ 输入数字"); return
+
+    try:
+        refund = float(input("退款金额: "))
+    except: print("❌ 金额必须是数字"); return
+
+    wb = load_workbook(EXCEL_FILE)
+    ws = wb[SHEET_NAME]
+    sell_val = ws.cell(row_num, 8).value
+    cost_val = ws.cell(row_num, 4).value
+    ws.cell(row_num, 10, refund)
+    ws.cell(row_num, 11, 0 if refund >= sell_val else sell_val - cost_val)
+    wb.save(EXCEL_FILE)
+    print("✅ 退款更新完成！")
+
+def main():
+    if not os.path.exists(EXCEL_FILE): init_excel()
+    while True:
+        print("\n📦「卖货登记助手」")
+        print("1️⃣ 新增记录  2️⃣ 处理退款  3️⃣ 退出")
+        choice = input("请选择: ").strip()
+        if choice == "1": add_record()
+        elif choice == "2": process_refund()
+        elif choice == "3": print("👋"); break
+        else: print("⚠️ 选1/2/3")
+
+if __name__ == "__main__":
+    main()

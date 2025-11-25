@@ -95,8 +95,8 @@ def calculate_profit(sell_price, cost):
     """计算退款前利润（卖价 - 成本）"""
     return sell_price - cost
 
-def add_record(excel_file, sheet_name):
-    """新增销售记录（强制添加在倒数第二行）"""
+ef add_record(excel_file, sheet_name):
+    """新增销售记录（强制添加在倒数第二行 + 公式化计算）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -108,9 +108,6 @@ def add_record(excel_file, sheet_name):
     except ValueError:
         print("❌ 输入错误！请确保克重、成本单价、卖价为数字")
         return
-
-    total_cost = weight * cost
-    profit_before = calculate_profit(sell_price, cost)
 
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
@@ -124,17 +121,24 @@ def add_record(excel_file, sheet_name):
     
     print(f"ℹ️ 新记录将添加在第{new_row}行（倒数第二行）")
     
+    # ====== 关键修复：所有关键列使用Excel公式 ======
+    # 注意：公式中 {row} 会被替换为实际行号（如 C2*D2）
     data = [
-        get_today(), goods, weight, cost, total_cost,
-        platform, source, sell_price, profit_before,
-        "", profit_before
+        get_today(), goods, weight, cost, f"=C{new_row}*D{new_row}",  # E列公式
+        platform, source, sell_price, f"=H{new_row}-D{new_row}",  # I列公式
+        "", f"=I{new_row}-J{new_row}"  # K列公式
     ]
     
+    # 写入数据（公式以字符串形式写入Excel）
     for col_idx, value in enumerate(data, start=1):
         ws.cell(row=new_row, column=col_idx, value=value)
     
     wb.save(excel_file)
-    print(f"✅ 记录已添加到第{new_row}行！")
+    print(f"✅ 记录已添加到第{new_row}行！\n" +
+          "ℹ️ 现在：\n" +
+          "  - 修改C列（克重）→ E列自动更新\n" +
+          "  - 修改D列（成本单价）→ E列/I列自动更新\n" +
+          "  - 修改J列（退款金额）→ K列自动更新")
 def search_records(criteria, excel_file, sheet_name):
     """智能匹配：支持任意字段匹配（安全处理）"""
     wb = safe_load_workbook(excel_file)
@@ -327,5 +331,6 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 

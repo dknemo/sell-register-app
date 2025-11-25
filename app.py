@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
@@ -188,3 +189,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

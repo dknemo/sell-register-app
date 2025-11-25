@@ -96,7 +96,7 @@ def calculate_profit(sell_price, cost):
     return sell_price - cost
 
 def add_record(excel_file, sheet_name):
-    """新增销售记录（K列留空，避免#VALUE!）"""
+    """新增销售记录（强制添加在倒数第二行 + 公式化 + 完整回显）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -112,7 +112,7 @@ def add_record(excel_file, sheet_name):
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
     
-    # ====== 关键修复：强制添加在倒数第二行 ======
+    # ====== 关键：确定写入行（倒数第二行） ======
     max_row = ws.max_row
     if max_row < 2:
         new_row = 2
@@ -121,19 +121,57 @@ def add_record(excel_file, sheet_name):
     
     print(f"ℹ️ 新记录将添加在第{new_row}行（倒数第二行）")
     
-    # ====== 关键修复：K列（退款后利润）留空！ ======
-    data = [
-        get_today(), goods, weight, cost, f"=C{new_row}*D{new_row}",  # E列公式
-        platform, source, sell_price, f"=H{new_row}-D{new_row}",  # I列公式
-        "", ""  # J列（退款金额）和K列（退款后利润）都留空！
+    # ====== 写入带公式的原始数据 ======
+    raw_data = [
+        get_today(), goods, weight, cost,
+        f"=C{new_row}*D{new_row}",          # E: 成本总价
+        platform, source, sell_price,
+        f"=H{new_row}-E{new_row}",          # I: 退款前利润
+        "", ""                              # J/K: 留空
     ]
     
-    for col_idx, value in enumerate(data, start=1):
+    for col_idx, value in enumerate(raw_data, start=1):
         ws.cell(row=new_row, column=col_idx, value=value)
     
     wb.save(excel_file)
-    print(f"✅ 记录已添加到第{new_row}行！\n" +
-          "ℹ️ 退款后利润（K列）将留空，处理退款后自动计算")
+    
+    # ====== 关键优化：重新加载工作簿以获取公式计算值 ======
+    # openpyxl 默认不计算公式，但我们可以：
+    # 方案1（推荐）：用 data_only=True 重新加载，获取计算后的值
+    wb_display = load_workbook(excel_file, data_only=True)
+    ws_display = wb_display[sheet_name]
+    
+    # 读取该行所有列的实际显示值（公式已计算）
+    display_values = []
+    for col in range(1, 12):  # A~K 列（1~11）
+        cell_value = ws_display.cell(row=new_row, column=col).value
+        # 处理 None 和浮点精度
+        if isinstance(cell_value, float):
+            # 如果是整数（如 10.0），显示为整数；否则保留小数
+            if cell_value.is_integer():
+                cell_value = int(cell_value)
+            else:
+                cell_value = round(cell_value, 2)
+        elif cell_value is None:
+            cell_value = ""
+        display_values.append(cell_value)
+    
+    # ====== 打印完整回显 ======
+    headers = ["日期", "货名", "克重", "成本单价", "成本总价",
+               "平台", "货源", "卖价", "退款前利润",
+               "退款金额", "退款后利润"]
+    
+    print("\n✅ 记录已成功添加！完整数据如下：")
+    print("-" * 60)
+    for i, (header, value) in enumerate(zip(headers, display_values)):
+        # 对齐输出（中文对齐需注意）
+        print(f"{header:>10}: {value}")
+    print("-" * 60)
+    
+    print("\nℹ️ 利润计算逻辑：")
+    print("  • 成本总价 = 克重 × 成本单价")
+    print("  • 退款前利润 = 卖价 - 成本总价")
+    print("  • 退款后利润将在处理退款后自动计算")
     
 def search_records(criteria, excel_file, sheet_name):
     """智能匹配：支持任意字段匹配（安全处理）"""
@@ -166,7 +204,7 @@ def search_records(criteria, excel_file, sheet_name):
     return matches
 
 def process_refund(excel_file, sheet_name):
-    """处理退款（仅此时写入K列公式）"""
+    """处理退款（使用正确的利润公式）"""
     print("\n【处理退款】")
     print("🔍 请输入克重（必须输入，纯数字，如：10.5）")
     
@@ -190,7 +228,9 @@ def process_refund(excel_file, sheet_name):
     
     print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
     for i, (row_idx, data) in enumerate(matches):
-        print(f"  {i+1}. 行{row_idx} | 平台:{data[5]} | 卖价:{data[7]} | 退款前利润:{data[8]}")
+        # 安全获取利润值（避免None）
+        profit_before = data[8] if data[8] is not None else "N/A"
+        print(f"  {i+1}. 行{row_idx} | 平台:{data[5]} | 卖价:{data[7]} | 退款前利润:{profit_before}")
     
     try:
         choice = int(input("选择序号: ")) - 1
@@ -215,13 +255,13 @@ def process_refund(excel_file, sheet_name):
     # 更新退款金额 (J列)
     ws.cell(row=row_num, column=10, value=refund)
     
-    # ====== 关键修复：此时才写入K列公式！ ======
+    # ====== 关键修复：K列公式基于正确的I列 ======
     ws.cell(row=row_num, column=11, value=f"=I{row_num}-J{row_num}")
     
     wb.save(excel_file)
     print("✅ 退款记录更新成功！\n" +
-          f"ℹ️ 退款后利润（K{row_num}）已设置为公式 =I{row_num}-J{row_num}")
-
+          f"ℹ️ 退款后利润(K{row_num}) = 退款前利润(I{row_num}) - 退款金额(J{row_num})")
+    
 def search_by_weight(weight, excel_file, sheet_name):
     """仅按克重匹配记录（支持浮点数）"""
     wb = safe_load_workbook(excel_file)
@@ -312,6 +352,7 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 
 

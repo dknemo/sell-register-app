@@ -200,14 +200,14 @@ def search_records(criteria, excel_file, sheet_name):
     return matches
 
 def process_refund(excel_file, sheet_name):
-    """处理退款（使用正确的利润公式）"""
+    """处理退款（仅更新退款金额J列，K列由公式自动计算）"""
     print("\n【处理退款】")
-    print("🔍 请输入克重（必须输入，纯数字，如：10.5）")
+    print("🔍 请输入克重（必须输入，纯数字，如：17.68）")
     
     # 安全输入克重
     while True:
         weight_input = input("克重: ").strip()
-        if weight_input == "":
+        if not weight_input:
             print("❌ 克重不能为空！请重新输入")
             continue
         try:
@@ -224,39 +224,39 @@ def process_refund(excel_file, sheet_name):
     
     print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
     for i, (row_idx, data) in enumerate(matches):
-        # 安全获取利润值（避免None）
         profit_before = data[8] if data[8] is not None else "N/A"
         print(f"  {i+1}. 行{row_idx} | 平台:{data[5]} | 卖价:{data[7]} | 退款前利润:{profit_before}")
     
     try:
         choice = int(input("选择序号: ")) - 1
-        if 0 <= choice < len(matches):
-            row_num = matches[choice][0]
-        else:
+        if not (0 <= choice < len(matches)):
             print("❌ 无效序号")
             return
-    except:
+        row_num = matches[choice][0]
+    except ValueError:
         print("❌ 请输入有效数字")
         return
     
     try:
         refund = float(input("\n退款金额 (纯数字): "))
-    except:
+    except ValueError:
         print("❌ 退款金额必须为数字")
         return
-    
+
+    # ====== 关键修复：只更新 J 列（退款金额），不碰 K 列！ ======
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
     
-    # 更新退款金额 (J列)
+    # 写入退款金额到 J 列（第10列）
     ws.cell(row=row_num, column=10, value=refund)
     
-    # ====== 关键修复：K列公式基于正确的I列 ======
-    ws.cell(row=row_num, column=11, value=f"=I{row_num}-J{row_num}")
+    # ⚠️ 不再操作 K 列（第11列）！公式会自动更新
     
     wb.save(excel_file)
-    print("✅ 退款记录更新成功！\n" +
-          f"ℹ️ 退款后利润(K{row_num}) = 退款前利润(I{row_num}) - 退款金额(J{row_num})")
+    
+    print("✅ 退款金额已更新！")
+    print(f"ℹ️ K{row_num}（退款后利润）将由公式自动计算：")
+    print(f"   =IF(J{row_num}=\"\", MAX(0,H{row_num}-E{row_num}), MAX(0,H{row_num}-E{row_num}-J{row_num}))")
     
 def search_by_weight(weight, excel_file, sheet_name):
     """仅按克重匹配记录（支持浮点数）"""
@@ -348,6 +348,7 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 
 

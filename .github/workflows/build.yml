@@ -14,13 +14,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Show files (debug)
+        run: dir
+
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install openpyxl==3.1.5 pyinstaller==6.11.0
 
-      - name: Build EXE with PyInstaller
+      - name: Build EXE
         run: |
-          pyinstaller --onefile --console --name "卖货登记助手" app.py
+          pyinstaller --onefile --console --hidden-import=openpyxl --name "SellRegister" app.py
+          ren dist\SellRegister.exe "卖货登记助手.exe"
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4

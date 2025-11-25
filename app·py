@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # app.py - 卖货 登记助手
 import os
 from datetime import datetime

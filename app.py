@@ -96,7 +96,7 @@ def calculate_profit(sell_price, cost):
     return sell_price - cost
 
 def add_record(excel_file, sheet_name):
-    """新增销售记录（横向显示完整数据 + Python 实时计算）"""
+    """新增销售记录（K列使用智能公式 + 横向显示）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -109,9 +109,9 @@ def add_record(excel_file, sheet_name):
         print("❌ 输入错误！请确保克重、成本单价、卖价为数字")
         return
 
-    # ====== 关键：Python 实时计算数值（不依赖Excel公式计算） ======
+    # Python 实时计算用于回显（不影响Excel公式）
     total_cost = weight * cost
-    profit_before = sell_price - total_cost
+    profit_before = max(0, sell_price - total_cost)  # 回显也按>=0处理
 
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
@@ -124,56 +124,50 @@ def add_record(excel_file, sheet_name):
     
     print(f"ℹ️ 新记录将添加在第{new_row}行（倒数第二行）")
     
-    # 写入带公式的原始数据（供Excel后续自动更新）
-    raw_data = [
+    # ====== 关键：K列使用您指定的智能公式 ======
+    data = [
         get_today(), goods, weight, cost,
-        f"=C{new_row}*D{new_row}",          # E列公式
+        f"=C{new_row}*D{new_row}",          # E: 成本总价
         platform, source, sell_price,
-        f"=H{new_row}-E{new_row}",          # I列公式
-        "", ""                              # J/K留空
+        f"=H{new_row}-E{new_row}",          # I: 退款前利润（可为负）
+        "",                                  # J: 退款金额（初始空）
+        f"=IF(J{new_row}=\"\", MAX(0, H{new_row}-E{new_row}), MAX(0, H{new_row}-E{new_row}-J{new_row}))"  # K: 智能公式
     ]
     
-    for col_idx, value in enumerate(raw_data, start=1):
+    for col_idx, value in enumerate(data, start=1):
         ws.cell(row=new_row, column=col_idx, value=value)
     
     wb.save(excel_file)
     
-    # ====== 关键优化：横向显示完整数据（使用Python计算值） ======
+    # ====== 横向回显（使用Python计算值，模拟Excel效果） ======
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润",
                "退款金额", "退款后利润"]
     
-    # 使用Python计算的值（确保显示正确）
+    # 回显时：退款后利润 = MAX(0, 卖价 - 成本总价) （因J为空）
+    refund_after_display = max(0, sell_price - total_cost)
+    
     display_values = [
-        get_today(), goods, 
-        f"{weight:.2f}", 
-        f"{cost:.2f}", 
+        get_today(), goods,
+        f"{weight:.2f}",
+        f"{cost:.2f}",
         f"{total_cost:.2f}",
-        platform, source, 
-        f"{sell_price:.2f}", 
-        f"{profit_before:.2f}",
-        "", ""
+        platform, source,
+        f"{sell_price:.2f}",
+        f"{sell_price - total_cost:.2f}",   # I列可能为负（如实显示）
+        "",
+        f"{refund_after_display:.2f}"       # K列 >=0
     ]
     
     print("\n✅ 记录已成功添加！完整数据如下：")
     print("=" * 120)
-    
-    # 横向打印表头
-    header_line = ""
-    for h in headers:
-        header_line += f"{h:>10}"
-    print(header_line)
-    
-    # 横向打印数据
-    data_line = ""
-    for v in display_values:
-        data_line += f"{str(v):>10}"
-    print(data_line)
-    
+    print("".join([f"{h:>10}" for h in headers]))
+    print("".join([f"{str(v):>10}" for v in display_values]))
     print("=" * 120)
-    print("\nℹ️ 提示：")
-    print("  • 表格中的成本总价(E)和退款前利润(I)已写入公式，可在Excel中修改克重/成本/卖价后自动更新")
-    print("  • 退款后利润将在处理退款后自动计算")
+    
+    print("\nℹ️ 公式说明：")
+    print(f"  • K{new_row} = IF(J{new_row}=\"\", MAX(0,H{new_row}-E{new_row}), MAX(0,H{new_row}-E{new_row}-J{new_row}))")
+    print("  • 当您填写退款金额（J列）后，K列将自动更新！")
     
 def search_records(criteria, excel_file, sheet_name):
     """智能匹配：支持任意字段匹配（安全处理）"""
@@ -354,6 +348,7 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 
 

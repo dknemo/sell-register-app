@@ -154,29 +154,35 @@ def search_records(criteria, excel_file, sheet_name):
     return matches
 
 def process_refund(excel_file, sheet_name):
-    """优化版退款流程：智能匹配+用户选择+自动计算（安全处理）"""
+    """极简退款流程：仅需输入克重（纯数字）"""
     print("\n【处理退款】")
-    print("🔍 请输入任意匹配条件（留空跳过），系统将自动查找匹配记录")
+    print("🔍 请输入克重（必须输入，纯数字，如：10.5）")
     
-    criteria = {
-        "货名": input("货名 (可留空): ").strip(),
-        "平台": input("平台 (可留空): ").strip(),
-        "卖价": input("卖价 (可留空): ").strip(),
-        "货源": input("货源 (可留空): ").strip()
-    }
+    # 安全输入克重
+    while True:
+        weight_input = input("克重: ").strip()
+        if weight_input == "":
+            print("❌ 克重不能为空！请重新输入")
+            continue
+        try:
+            weight_val = float(weight_input)
+            break
+        except ValueError:
+            print("❌ 克重必须是数字！请重新输入")
     
-    matches = search_records(criteria, excel_file, sheet_name)
+    # 搜索匹配记录
+    matches = search_by_weight(weight_val, excel_file, sheet_name)
     
     if not matches:
-        print("❌ 未找到匹配记录，请检查输入条件")
+        print(f"❌ 未找到克重 {weight_val} 的记录")
         return
     
-    print(f"\n🔍 找到 {len(matches)} 条匹配记录，请选择：")
+    # 显示匹配记录
+    print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
     for i, (row_idx, data) in enumerate(matches):
-        # 安全处理空值
-        profit_before = data[8] if data[8] is not None else 0
-        print(f"  {i+1}. 行{row_idx} | 货名:{data[1] or 'N/A'} | 平台:{data[5] or 'N/A'} | 卖价:{data[7] or 'N/A'} | 退款前利润:{profit_before}")
+        print(f"  {i+1}. 行{row_idx} | 平台:{data[5]} | 卖价:{data[7]} | 退款前利润:{data[8]}")
     
+    # 用户选择
     try:
         choice = int(input("选择序号: ")) - 1
         if 0 <= choice < len(matches):
@@ -184,20 +190,21 @@ def process_refund(excel_file, sheet_name):
         else:
             print("❌ 无效序号")
             return
-    except ValueError:
+    except:
         print("❌ 请输入有效数字")
         return
     
+    # 输入退款金额
     try:
         refund = float(input("\n退款金额 (纯数字): "))
-    except ValueError:
+    except:
         print("❌ 退款金额必须为数字")
         return
     
+    # 更新记录
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
     
-    # 安全获取卖价和成本
     sell_val = ws.cell(row=row_num, column=8).value
     cost_val = ws.cell(row=row_num, column=4).value
     
@@ -205,10 +212,8 @@ def process_refund(excel_file, sheet_name):
         print("❌ 记录数据不完整（卖价/成本缺失）")
         return
     
-    # 更新退款金额 (第10列)
     ws.cell(row=row_num, column=10, value=refund)
     
-    # 自动计算退款后利润 (第11列)
     if refund >= sell_val:
         new_profit = 0
         print("✅ 退款后利润已更新为 0（退款金额 ≥ 卖价）")
@@ -216,12 +221,31 @@ def process_refund(excel_file, sheet_name):
         new_profit = calculate_profit(sell_val, cost_val)
         print(f"✅ 退款后利润已更新为 {new_profit}（退款金额 < 卖价）")
     
-    # 更新退款后利润
     ws.cell(row=row_num, column=11, value=new_profit)
-    
     wb.save(excel_file)
     print("✅ 退款记录更新成功！")
 
+def search_by_weight(weight, excel_file, sheet_name):
+    """仅按克重匹配记录（支持浮点数）"""
+    wb = safe_load_workbook(excel_file)
+    ws = wb[sheet_name]
+    matches = []
+    
+    for row_idx in range(2, ws.max_row + 1):
+        weight_cell = ws.cell(row=row_idx, column=3).value
+        if weight_cell is None:
+            continue
+            
+        try:
+            weight_val = float(weight_cell)
+        except:
+            continue
+            
+        if abs(weight_val - weight) < 1e-5:
+            data = [ws.cell(row=row_idx, column=col).value for col in range(1, 12)]
+            matches.append((row_idx, data))
+    
+    return matches
 def main():
     """主程序入口（安全启动）"""
     try:
@@ -291,3 +315,4 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+

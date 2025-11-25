@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 CONFIG_FILE = "config.json"
 
 def load_config():
-    """加载配置文件，若不存在则创建默认配置"""
+    """加载配置文件，缺失字段自动填充默认值"""
     if not os.path.exists(CONFIG_FILE):
         default_config = {
             "excel_file": "卖货登记.xlsx",
@@ -26,12 +26,22 @@ def load_config():
     
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         config = json.load(f)
-        # 确保必要字段存在
-        required = ["excel_file", "sheet_name", "data_start_row", "data_end_row", "summary_row"]
-        for key in required:
-            if key not in config:
-                raise ValueError(f"配置文件缺少字段: {key}")
-        return config
+    
+    # 自动填充缺失字段
+    required = ["excel_file", "sheet_name", "data_start_row", "data_end_row", "summary_row"]
+    default = {
+        "excel_file": "卖货登记.xlsx",
+        "sheet_name": "销售记录",
+        "data_start_row": 2,
+        "data_end_row": 999,
+        "summary_row": 1000
+    }
+    for key in required:
+        if key not in config:
+            print(f"⚠️ 配置缺失字段: {key} → 使用默认值: {default[key]}")
+            config[key] = default[key]
+    
+    return config
 
 # 全局配置（程序启动时加载一次）
 CONFIG = load_config()
@@ -48,7 +58,7 @@ def get_today():
     return datetime.now().strftime("%Y年%m月%d日")
 
 def _init_sheet_structure(ws):
-    """初始化工作表结构（表头 + 空行 + 统计行）"""
+    """初始化工作表结构（使用配置）"""
     ws.delete_rows(1, ws.max_row)
     
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
@@ -66,7 +76,7 @@ def _init_sheet_structure(ws):
     ws.cell(row=SUMMARY_ROW, column=11, value=f"=SUM(K{DATA_START_ROW}:K{DATA_END_ROW})")
 
 def safe_load_workbook(filename):
-    """安全加载工作簿，自动修复缺失的Sheet"""
+    """安全加载工作簿（自动修复缺失Sheet）"""
     if not os.path.exists(filename):
         init_template(filename, SHEET_NAME)
     
@@ -76,7 +86,7 @@ def safe_load_workbook(filename):
         ws = wb.create_sheet(SHEET_NAME)
         _init_sheet_structure(ws)
         wb.save(filename)
-        print(f"✅ 工作表 '{SHEET_NAME}' 已创建并保存")
+        print(f"✅ 工作表 '{SHEET_NAME}' 已创建")
     return wb
 
 def init_template(filename, sheet_name):
@@ -90,11 +100,11 @@ def init_template(filename, sheet_name):
     print(f"✅ 模板已创建: {filename}")
 
 def find_insert_row(ws):
-    """在数据区内查找第一个A列为空的行"""
+    """在数据区内查找第一个空行"""
     for row in range(DATA_START_ROW, DATA_END_ROW + 1):
         if ws.cell(row=row, column=1).value is None:
             return row
-    return None  # 数据区已满
+    return None
 
 # ======================
 # 核心功能
@@ -220,6 +230,83 @@ def process_refund(excel_file, sheet_name):
     print(f"ℹ️ K{row_num}（退款后利润）将由公式自动计算")
 
 # ======================
+# 配置修改功能
+# ======================
+def modify_config():
+    """修改配置文件（运行时交互式修改）"""
+    print("\n" + "="*50)
+    print("       修改配置")
+    print("="*50)
+    
+    print("当前配置:")
+    print(f"1. 文件名: {CONFIG['excel_file']}")
+    print(f"2. Sheet名: {CONFIG['sheet_name']}")
+    print(f"3. 数据区开始行: {CONFIG['data_start_row']}")
+    print(f"4. 数据区结束行: {CONFIG['data_end_row']}")
+    print(f"5. 统计行: {CONFIG['summary_row']}")
+    print("6. 返回主菜单")
+    
+    choice = input("请选择要修改的配置项 (1-6): ").strip()
+    
+    if choice == "1":
+        new_name = input("请输入新文件名 (如: 黄金销售台账.xlsx): ").strip()
+        if new_name:
+            CONFIG["excel_file"] = new_name
+            print(f"✅ 文件名已更新为: {new_name}")
+    
+    elif choice == "2":
+        new_sheet = input("请输入新Sheet名 (如: Daily Sales): ").strip()
+        if new_sheet:
+            CONFIG["sheet_name"] = new_sheet
+            print(f"✅ Sheet名已更新为: {new_sheet}")
+    
+    elif choice == "3":
+        try:
+            new_start = int(input(f"请输入新开始行 (当前: {CONFIG['data_start_row']}): "))
+            if new_start >= 1:
+                CONFIG["data_start_row"] = new_start
+                print(f"✅ 数据区开始行已更新为: {new_start}")
+            else:
+                print("❌ 行号必须 ≥ 1")
+        except ValueError:
+            print("❌ 请输入有效数字")
+    
+    elif choice == "4":
+        try:
+            new_end = int(input(f"请输入新结束行 (当前: {CONFIG['data_end_row']}): "))
+            if new_end > CONFIG["data_start_row"]:
+                CONFIG["data_end_row"] = new_end
+                print(f"✅ 数据区结束行已更新为: {new_end}")
+            else:
+                print(f"❌ 结束行必须 > 开始行 ({CONFIG['data_start_row']})")
+        except ValueError:
+            print("❌ 请输入有效数字")
+    
+    elif choice == "5":
+        try:
+            new_summary = int(input(f"请输入新统计行 (当前: {CONFIG['summary_row']}): "))
+            if new_summary > CONFIG["data_end_row"]:
+                CONFIG["summary_row"] = new_summary
+                print(f"✅ 统计行已更新为: {new_summary}")
+            else:
+                print(f"❌ 统计行必须 > 数据区结束行 ({CONFIG['data_end_row']})")
+        except ValueError:
+            print("❌ 请输入有效数字")
+    
+    elif choice == "6":
+        print("↩️ 返回主菜单")
+        return
+    
+    else:
+        print("❌ 无效选项")
+        return
+    
+    # 保存修改到配置文件
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(CONFIG, f, ensure_ascii=False, indent=2)
+    print(f"✅ 配置已保存到: {CONFIG_FILE}")
+
+# ======================
 # 主程序
 # ======================
 def main():
@@ -229,14 +316,17 @@ def main():
         print("="*50)
         print("1. 新增销售记录")
         print("2. 处理退款")
-        print("3. 退出")
+        print("3. 修改配置")  # 新增配置修改选项
+        print("4. 退出")
         choice = input("请选择操作: ").strip()
         
         if choice == "1":
             add_record(EXCEL_FILE, SHEET_NAME)
         elif choice == "2":
             process_refund(EXCEL_FILE, SHEET_NAME)
-        elif choice == "3":
+        elif choice == "3":  # 修改配置
+            modify_config()
+        elif choice == "4":
             print("👋 再见！")
             break
         else:

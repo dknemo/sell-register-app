@@ -96,7 +96,7 @@ def calculate_profit(sell_price, cost):
     return sell_price - cost
 
 def add_record(excel_file, sheet_name):
-    """新增销售记录（强制添加在倒数第二行 + 公式化 + 完整回显）"""
+    """新增销售记录（横向显示完整数据 + Python 实时计算）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -109,10 +109,13 @@ def add_record(excel_file, sheet_name):
         print("❌ 输入错误！请确保克重、成本单价、卖价为数字")
         return
 
+    # ====== 关键：Python 实时计算数值（不依赖Excel公式计算） ======
+    total_cost = weight * cost
+    profit_before = sell_price - total_cost
+
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
     
-    # ====== 关键：确定写入行（倒数第二行） ======
     max_row = ws.max_row
     if max_row < 2:
         new_row = 2
@@ -121,13 +124,13 @@ def add_record(excel_file, sheet_name):
     
     print(f"ℹ️ 新记录将添加在第{new_row}行（倒数第二行）")
     
-    # ====== 写入带公式的原始数据 ======
+    # 写入带公式的原始数据（供Excel后续自动更新）
     raw_data = [
         get_today(), goods, weight, cost,
-        f"=C{new_row}*D{new_row}",          # E: 成本总价
+        f"=C{new_row}*D{new_row}",          # E列公式
         platform, source, sell_price,
-        f"=H{new_row}-E{new_row}",          # I: 退款前利润
-        "", ""                              # J/K: 留空
+        f"=H{new_row}-E{new_row}",          # I列公式
+        "", ""                              # J/K留空
     ]
     
     for col_idx, value in enumerate(raw_data, start=1):
@@ -135,42 +138,41 @@ def add_record(excel_file, sheet_name):
     
     wb.save(excel_file)
     
-    # ====== 关键优化：重新加载工作簿以获取公式计算值 ======
-    # openpyxl 默认不计算公式，但我们可以：
-    # 方案1（推荐）：用 data_only=True 重新加载，获取计算后的值
-    wb_display = load_workbook(excel_file, data_only=True)
-    ws_display = wb_display[sheet_name]
-    
-    # 读取该行所有列的实际显示值（公式已计算）
-    display_values = []
-    for col in range(1, 12):  # A~K 列（1~11）
-        cell_value = ws_display.cell(row=new_row, column=col).value
-        # 处理 None 和浮点精度
-        if isinstance(cell_value, float):
-            # 如果是整数（如 10.0），显示为整数；否则保留小数
-            if cell_value.is_integer():
-                cell_value = int(cell_value)
-            else:
-                cell_value = round(cell_value, 2)
-        elif cell_value is None:
-            cell_value = ""
-        display_values.append(cell_value)
-    
-    # ====== 打印完整回显 ======
+    # ====== 关键优化：横向显示完整数据（使用Python计算值） ======
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润",
                "退款金额", "退款后利润"]
     
-    print("\n✅ 记录已成功添加！完整数据如下：")
-    print("-" * 60)
-    for i, (header, value) in enumerate(zip(headers, display_values)):
-        # 对齐输出（中文对齐需注意）
-        print(f"{header:>10}: {value}")
-    print("-" * 60)
+    # 使用Python计算的值（确保显示正确）
+    display_values = [
+        get_today(), goods, 
+        f"{weight:.2f}", 
+        f"{cost:.2f}", 
+        f"{total_cost:.2f}",
+        platform, source, 
+        f"{sell_price:.2f}", 
+        f"{profit_before:.2f}",
+        "", ""
+    ]
     
-    print("\nℹ️ 利润计算逻辑：")
-    print("  • 成本总价 = 克重 × 成本单价")
-    print("  • 退款前利润 = 卖价 - 成本总价")
+    print("\n✅ 记录已成功添加！完整数据如下：")
+    print("=" * 120)
+    
+    # 横向打印表头
+    header_line = ""
+    for h in headers:
+        header_line += f"{h:>10}"
+    print(header_line)
+    
+    # 横向打印数据
+    data_line = ""
+    for v in display_values:
+        data_line += f"{str(v):>10}"
+    print(data_line)
+    
+    print("=" * 120)
+    print("\nℹ️ 提示：")
+    print("  • 表格中的成本总价(E)和退款前利润(I)已写入公式，可在Excel中修改克重/成本/卖价后自动更新")
     print("  • 退款后利润将在处理退款后自动计算")
     
 def search_records(criteria, excel_file, sheet_name):
@@ -352,6 +354,7 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 
 

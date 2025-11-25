@@ -96,7 +96,7 @@ def calculate_profit(sell_price, cost):
     return sell_price - cost
 
 def add_record(excel_file, sheet_name):
-    """新增销售记录"""
+    """新增销售记录（强制添加在倒数第二行）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -115,14 +115,26 @@ def add_record(excel_file, sheet_name):
     wb = safe_load_workbook(excel_file)
     ws = wb[sheet_name]
     
-    ws.append([
+    # ====== 关键修复：强制添加在倒数第二行 ======
+    max_row = ws.max_row
+    if max_row < 2:  # 只有表头（第1行）
+        new_row = 2
+    else:
+        new_row = max_row - 1  # 倒数第二行
+    
+    print(f"ℹ️ 新记录将添加在第{new_row}行（倒数第二行）")
+    
+    data = [
         get_today(), goods, weight, cost, total_cost,
         platform, source, sell_price, profit_before,
         "", profit_before
-    ])
+    ]
+    
+    for col_idx, value in enumerate(data, start=1):
+        ws.cell(row=new_row, column=col_idx, value=value)
+    
     wb.save(excel_file)
-    print(f"✅ 记录已添加！\n平台: {platform} | 成本总价: {total_cost} | 退款前利润: {profit_before}")
-
+    print(f"✅ 记录已添加到第{new_row}行！")
 def search_records(criteria, excel_file, sheet_name):
     """智能匹配：支持任意字段匹配（安全处理）"""
     wb = safe_load_workbook(excel_file)
@@ -315,4 +327,5 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 

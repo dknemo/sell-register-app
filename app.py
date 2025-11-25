@@ -95,7 +95,7 @@ def calculate_profit(sell_price, cost):
     """计算退款前利润（卖价 - 成本）"""
     return sell_price - cost
 
-ef add_record(excel_file, sheet_name):
+def add_record(excel_file, sheet_name):
     """新增销售记录（强制添加在倒数第二行 + 公式化计算）"""
     print("\n【新增销售记录】")
     try:
@@ -331,6 +331,7 @@ if __name__ == "__main__":
         print(f"❌ 程序运行时发生严重错误: {str(e)}")
         print("👉 请截图此错误信息并联系开发者")
         input("按回车键退出...")
+
 
 
 

@@ -1,4 +1,4 @@
-# app.py - 卖货登记助手
+# app.py - 卖货 登记助手
 import os
 from datetime import datetime
 from openpyxl import load_workbook, Workbook

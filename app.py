@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils.datetime import from_excel  # 用于解析Excel日期序列号
 
 # ======================
 # 配置管理
@@ -27,7 +28,6 @@ def load_config():
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         config = json.load(f)
     
-    # 自动填充缺失字段
     required = ["excel_file", "sheet_name", "data_start_row", "data_end_row", "summary_row"]
     default = {
         "excel_file": "卖货登记.xlsx",
@@ -43,7 +43,6 @@ def load_config():
     
     return config
 
-# 全局配置（程序启动时加载一次）
 CONFIG = load_config()
 EXCEL_FILE = CONFIG["excel_file"]
 SHEET_NAME = CONFIG["sheet_name"]
@@ -58,29 +57,23 @@ def get_today():
     return datetime.now().strftime("%Y年%m月%d日")
 
 def _init_sheet_structure(ws):
-    """初始化工作表结构（使用配置）"""
+    """初始化工作表结构"""
     ws.delete_rows(1, ws.max_row)
-    
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
     ws.append(headers)
-    
-    # 预留数据区空行
     for _ in range(DATA_END_ROW - DATA_START_ROW + 1):
         ws.append([""] * 11)
-    
-    # 统计行公式
     ws.cell(row=SUMMARY_ROW, column=1, value="总计")
     ws.cell(row=SUMMARY_ROW, column=5, value=f"=SUM(E{DATA_START_ROW}:E{DATA_END_ROW})")
     ws.cell(row=SUMMARY_ROW, column=9, value=f"=SUM(I{DATA_START_ROW}:I{DATA_END_ROW})")
     ws.cell(row=SUMMARY_ROW, column=11, value=f"=SUM(K{DATA_START_ROW}:K{DATA_END_ROW})")
 
-def safe_load_workbook(filename):
-    """安全加载工作簿（自动修复缺失Sheet）"""
+def safe_load_workbook(filename, data_only=False):
+    """安全加载工作簿（支持 data_only 模式）"""
     if not os.path.exists(filename):
         init_template(filename, SHEET_NAME)
-    
-    wb = load_workbook(filename)
+    wb = load_workbook(filename, data_only=data_only)
     if SHEET_NAME not in wb.sheetnames:
         print(f"⚠️ 工作表 '{SHEET_NAME}' 不存在，正在创建...")
         ws = wb.create_sheet(SHEET_NAME)
@@ -93,7 +86,7 @@ def init_template(filename, sheet_name):
     """初始化Excel模板"""
     print("ℹ️ 首次运行，正在创建Excel模板...")
     wb = Workbook()
-    wb.remove(wb.active)  # 删除默认Sheet
+    wb.remove(wb.active)
     ws = wb.create_sheet(sheet_name)
     _init_sheet_structure(ws)
     wb.save(filename)
@@ -106,11 +99,28 @@ def find_insert_row(ws):
             return row
     return None
 
+def format_cell_value(val):
+    """将单元格值格式化为可读字符串"""
+    if val is None:
+        return ""
+    elif isinstance(val, datetime):
+        return val.strftime("%Y年%m月%d日")
+    elif isinstance(val, int) and val > 30000:  # 可能是Excel日期序列号
+        try:
+            dt = from_excel(val)
+            return dt.strftime("%Y年%m月%d日")
+        except:
+            return str(val)
+    elif isinstance(val, float):
+        return f"{val:.2f}"
+    else:
+        return str(val)
+
 # ======================
 # 核心功能
 # ======================
 def add_record(excel_file, sheet_name):
-    """新增销售记录"""
+    """新增销售记录（写入公式）"""
     print("\n【新增销售记录】")
     try:
         goods = input("货名: ").strip()
@@ -126,39 +136,33 @@ def add_record(excel_file, sheet_name):
     total_cost = weight * cost
     profit_before = sell_price - total_cost
 
-    wb = safe_load_workbook(excel_file)
+    wb = safe_load_workbook(excel_file, data_only=False)  # 写入必须用普通模式
     ws = wb[sheet_name]
-    
     insert_row = find_insert_row(ws)
     if insert_row is None:
         print(f"❌ 数据区已满（最多 {DATA_END_ROW - DATA_START_ROW + 1} 条记录）！")
         return
 
-    print(f"ℹ️ 新记录将添加在第{insert_row}行")
-    
-    # 写入带公式的完整数据
     data = [
         get_today(), goods, weight, cost,
-        f"=C{insert_row}*D{insert_row}",  # E: 成本总价
+        f"=C{insert_row}*D{insert_row}",
         platform, source, sell_price,
-        f"=H{insert_row}-E{insert_row}",  # I: 退款前利润
-        "",  # J: 退款金额
-        f"=IF(J{insert_row}=\"\", MAX(0,H{insert_row}-E{insert_row}), MAX(0,H{insert_row}-E{insert_row}-J{insert_row}))"  # K: 智能公式
+        f"=H{insert_row}-E{insert_row}",
+        "",
+        f"=IF(J{insert_row}=\"\", MAX(0,H{insert_row}-E{insert_row}), MAX(0,H{insert_row}-E{insert_row}-J{insert_row}))"
     ]
     
     for col_idx, value in enumerate(data, start=1):
         ws.cell(row=insert_row, column=col_idx, value=value)
-    
     wb.save(excel_file)
     
-    # 横向回显
-    headers = ["日期", "货名", "克重", "成本单价", "成本总价",
-               "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
+    # 回显（使用计算后的值）
     display_values = [
         get_today(), goods, f"{weight:.2f}", f"{cost:.2f}", f"{total_cost:.2f}",
         platform, source, f"{sell_price:.2f}", f"{profit_before:.2f}", "", f"{max(0, profit_before):.2f}"
     ]
-    
+    headers = ["日期", "货名", "克重", "成本单价", "成本总价",
+               "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
     print("\n✅ 记录已成功添加！完整数据如下：")
     print("=" * 120)
     print("".join([f"{h:>10}" for h in headers]))
@@ -166,14 +170,18 @@ def add_record(excel_file, sheet_name):
     print("=" * 120)
 
 def search_by_weight(target_weight, excel_file, sheet_name):
-    """按克重搜索记录"""
-    wb = safe_load_workbook(excel_file)
+    """按克重搜索记录（使用 data_only=True 读取真实值）"""
+    wb = safe_load_workbook(excel_file, data_only=True)
     ws = wb[sheet_name]
     matches = []
     for row in range(DATA_START_ROW, DATA_END_ROW + 1):
         cell_value = ws.cell(row=row, column=3).value  # C列：克重
-        if cell_value is not None and abs(cell_value - target_weight) < 1e-5:
-            data = [ws.cell(row=row, column=i).value for i in range(1, 12)]
+        if cell_value is not None and isinstance(cell_value, (int, float)) and abs(cell_value - target_weight) < 1e-5:
+            data = []
+            for col in range(1, 12):
+                raw_val = ws.cell(row=row, column=col).value
+                formatted_val = format_cell_value(raw_val)
+                data.append(formatted_val)
             matches.append((row, data))
     return matches
 
@@ -199,7 +207,6 @@ def process_refund(excel_file, sheet_name):
         print(f"❌ 未找到克重 {weight_val} 的记录")
         return
     
-    # 表头定义（与Excel一致）
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
     
@@ -209,17 +216,7 @@ def process_refund(excel_file, sheet_name):
     print("-" * 130)
     
     for i, (row_idx, data) in enumerate(matches):
-        # 格式化每列数据（None 显示为空）
-        formatted = []
-        for val in data:
-            if val is None:
-                formatted.append("")
-            elif isinstance(val, float):
-                formatted.append(f"{val:.2f}")
-            else:
-                formatted.append(str(val))
-        
-        print(f"{i+1:<4} 行{row_idx:<4} " + "".join([f"{str(v):>10}" for v in formatted]))
+        print(f"{i+1:<4} 行{row_idx:<4} " + "".join([f"{str(v):>10}" for v in data]))
     
     print("=" * 130)
     
@@ -239,8 +236,8 @@ def process_refund(excel_file, sheet_name):
         print("❌ 退款金额必须为数字")
         return
 
-    # 仅更新J列（第10列）
-    wb = safe_load_workbook(excel_file)
+    # 仅更新J列（第10列），使用普通模式（保留公式）
+    wb = safe_load_workbook(excel_file, data_only=False)
     ws = wb[sheet_name]
     ws.cell(row=row_num, column=10, value=refund)
     wb.save(excel_file)
@@ -320,7 +317,6 @@ def modify_config():
         print("❌ 无效选项")
         return
     
-    # 保存修改到配置文件
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(CONFIG, f, ensure_ascii=False, indent=2)
     print(f"✅ 配置已保存到: {CONFIG_FILE}")
@@ -331,11 +327,11 @@ def modify_config():
 def main():
     while True:
         print("\n" + "="*50)
-        print("       五一个斋专用的卖货登记助手")
+        print("       卖货登记助手")
         print("="*50)
         print("1. 新增销售记录")
         print("2. 处理退款")
-        print("3. 修改配置")  # 新增配置修改选项
+        print("3. 修改配置")
         print("4. 退出")
         choice = input("请选择操作: ").strip()
         
@@ -343,7 +339,7 @@ def main():
             add_record(EXCEL_FILE, SHEET_NAME)
         elif choice == "2":
             process_refund(EXCEL_FILE, SHEET_NAME)
-        elif choice == "3":  # 修改配置
+        elif choice == "3":
             modify_config()
         elif choice == "4":
             print("👋 再见！")
@@ -353,4 +349,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

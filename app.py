@@ -199,10 +199,29 @@ def process_refund(excel_file, sheet_name):
         print(f"❌ 未找到克重 {weight_val} 的记录")
         return
     
+    # 表头定义（与Excel一致）
+    headers = ["日期", "货名", "克重", "成本单价", "成本总价",
+               "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
+    
     print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
+    print("=" * 130)
+    print(f"{'序号':<4} {'行号':<6} " + "".join([f"{h:>10}" for h in headers]))
+    print("-" * 130)
+    
     for i, (row_idx, data) in enumerate(matches):
-        profit_before = data[8] if data[8] is not None else "N/A"
-        print(f"  {i+1}. 行{row_idx} | 平台:{data[5]} | 卖价:{data[7]} | 退款前利润:{profit_before}")
+        # 格式化每列数据（None 显示为空）
+        formatted = []
+        for val in data:
+            if val is None:
+                formatted.append("")
+            elif isinstance(val, float):
+                formatted.append(f"{val:.2f}")
+            else:
+                formatted.append(str(val))
+        
+        print(f"{i+1:<4} 行{row_idx:<4} " + "".join([f"{str(v):>10}" for v in formatted]))
+    
+    print("=" * 130)
     
     try:
         choice = int(input("选择序号: ")) - 1
@@ -312,7 +331,7 @@ def modify_config():
 def main():
     while True:
         print("\n" + "="*50)
-        print("       卖货登记助手")
+        print("       五一个斋专用的卖货登记助手")
         print("="*50)
         print("1. 新增销售记录")
         print("2. 处理退款")
@@ -334,3 +353,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

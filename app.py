@@ -3,7 +3,7 @@ import os
 import json
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
-from openpyxl.utils.datetime import from_excel  # 用于解析Excel日期序列号
+from openpyxl.utils.datetime import from_excel
 
 # ======================
 # 配置管理
@@ -105,7 +105,7 @@ def format_cell_value(val):
         return ""
     elif isinstance(val, datetime):
         return val.strftime("%Y年%m月%d日")
-    elif isinstance(val, int) and val > 30000:  # 可能是Excel日期序列号
+    elif isinstance(val, int) and val > 30000:  # Excel日期序列号
         try:
             dt = from_excel(val)
             return dt.strftime("%Y年%m月%d日")
@@ -115,6 +115,38 @@ def format_cell_value(val):
         return f"{val:.2f}"
     else:
         return str(val)
+
+# ======================
+# 修复对齐问题的核心函数
+# ======================
+def print_table(headers, rows):
+    """美观打印表格（动态计算列宽）"""
+    # 计算每列最大宽度
+    col_widths = [len(str(h)) for h in headers]  # 初始为表头长度
+    
+    # 更新为数据中的最大长度
+    for row in rows:
+        for i, val in enumerate(row):
+            val_str = str(val)
+            if len(val_str) > col_widths[i]:
+                col_widths[i] = len(val_str)
+    
+    # 确保最小宽度（避免过短）
+    for i in range(len(col_widths)):
+        if col_widths[i] < 4:
+            col_widths[i] = 4
+    
+    # 打印表头
+    header_line = " | ".join([f"{headers[i]:<{col_widths[i]}}" for i in range(len(headers))])
+    print("=" * (len(header_line) + 2))
+    print(header_line)
+    print("-" * (len(header_line) + 2))
+    
+    # 打印数据行
+    for row in rows:
+        data_line = " | ".join([f"{str(row[i]):<{col_widths[i]}}" for i in range(len(row))])
+        print(data_line)
+    print("=" * (len(header_line) + 2))
 
 # ======================
 # 核心功能
@@ -136,7 +168,7 @@ def add_record(excel_file, sheet_name):
     total_cost = weight * cost
     profit_before = sell_price - total_cost
 
-    wb = safe_load_workbook(excel_file, data_only=False)  # 写入必须用普通模式
+    wb = safe_load_workbook(excel_file, data_only=False)
     ws = wb[sheet_name]
     insert_row = find_insert_row(ws)
     if insert_row is None:
@@ -164,10 +196,7 @@ def add_record(excel_file, sheet_name):
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
     print("\n✅ 记录已成功添加！完整数据如下：")
-    print("=" * 120)
-    print("".join([f"{h:>10}" for h in headers]))
-    print("".join([f"{str(v):>10}" for v in display_values]))
-    print("=" * 120)
+    print_table(headers, [display_values])
 
 def search_by_weight(target_weight, excel_file, sheet_name):
     """按克重搜索记录（使用 data_only=True 读取真实值）"""
@@ -210,15 +239,14 @@ def process_refund(excel_file, sheet_name):
     headers = ["日期", "货名", "克重", "成本单价", "成本总价",
                "平台", "货源", "卖价", "退款前利润", "退款金额", "退款后利润"]
     
-    print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
-    print("=" * 130)
-    print(f"{'序号':<4} {'行号':<6} " + "".join([f"{h:>10}" for h in headers]))
-    print("-" * 130)
-    
+    # 构建数据行（只包含匹配的记录）
+    data_rows = []
     for i, (row_idx, data) in enumerate(matches):
-        print(f"{i+1:<4} 行{row_idx:<4} " + "".join([f"{str(v):>10}" for v in data]))
+        data_rows.append([f"{i+1}", f"行{row_idx}"] + data)
     
-    print("=" * 130)
+    # 打印表格（使用新对齐函数）
+    print(f"\n🔍 找到 {len(matches)} 条克重 {weight_val} 的记录，请选择：")
+    print_table(["序号", "行号"] + headers, data_rows)
     
     try:
         choice = int(input("选择序号: ")) - 1
